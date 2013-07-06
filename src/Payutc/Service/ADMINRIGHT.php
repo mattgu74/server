@@ -62,6 +62,12 @@ use \Application;
                         "user"    => true,
                         "app"     => true
                     ), array(
+                        "service" => "REVERSEMENT",
+                        "name"    => "Suivi des reversements",
+                        "desc"    => "Donne les droits de gérer le suivi des reversments de payutc vers les comptes de votre association.",
+                        "user"    => true,
+                        "app"     => false
+                    ), array(
                         "service" => "BLOCKED",
                         "name"    => "Blocage",
                         "desc"    => "Donne les droits à l'utilisateur ou à l'application de bloquer/débloquer un utilisateur",
