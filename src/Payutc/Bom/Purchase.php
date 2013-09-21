@@ -10,7 +10,7 @@
 namespace Payutc\Bom;
 
 use \Payutc\Exception\NotImplemented;
-use \Payutc\Db;
+use \Payutc\Db\Dbal;
 use \Payutc\Bom\Item;
 use \Payutc\Bom\User;
 
@@ -26,8 +26,8 @@ class Purchase
      */
     public static function getNbSell($obj_id, $fun_id, $start=null, $end=null, $tick=null) 
     {
-        $qb = Db::createQueryBuilder();
-        $qb->select('count(*) as nb', 'pur.pur_date')
+        $qb = Dbal::createQueryBuilder();
+        $qb->select('sum(pur_qte) as nb', 'pur.pur_date')
            ->from('t_purchase_pur', 'pur')
            ->where('pur.obj_id = :obj_id')->setParameter('obj_id', $obj_id)
            ->andWhere('pur.fun_id = :fun_id')->setParameter('fun_id', $fun_id)
@@ -58,7 +58,7 @@ class Purchase
     
     public static function getPurchaseById($pur_id)
     {
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
             $qb->select('*', 'pur.pur_date')
                ->from('t_purchase_pur', 'pur')
                ->where('pur.pur_id = :pur_id')
@@ -71,23 +71,23 @@ class Purchase
         // get the purchase
         $pur = static::getPurchaseById($pur_id);
         // create the update statement for the purchase
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb = $qb->update('t_purchase_pur', 'pur')
             ->set('pur_removed', $qb->expr()->literal(1))
             ->where('pur.pur_id = :pur_id')
             ->setParameter('pur_id', $pur_id);
         // wrap everything in a transaction
-        Db::beginTransaction();
+        Dbal::beginTransaction();
         try {
             // update purchase + buyer + stock, then commit
             $qb->execute();
             User::incCreditById($pur['usr_id_buyer'], $pur['pur_price']);
-            Product::incStockById($pur['obj_id'], 1);
-            Db::commit();
+            Product::incStockById($pur['obj_id'], $pur['pur_qte']);
+            Dbal::commit();
         }
         catch (Exception $e) {
             // rollback if failure
-            Db::rollback();
+            Dbal::rollback();
             throw $e;
         }
     }
@@ -102,12 +102,15 @@ class Purchase
         $total_price = 0;
         $purchases = array();
         foreach ($items as $itm) {
-            $total_price += $itm['price'];
+            $price = $itm['price'] * $itm['qte'];
+            $total_price += $price;
             $purchases[] = array(
             'pur_date' => date('Y-m-d H:i:s'),
             'pur_type' => 'product',
             'obj_id' => $itm['id'],
-            'pur_price' => $itm['price'],
+            'pur_qte' => $itm['qte'],
+            'pur_price' => $price,
+            'pur_unit_price' => $itm['price'],
             'usr_id_buyer' => $usr_id_buyer,
             'usr_id_seller' => $usr_id_seller,
             'poi_id' => $poi_id,
@@ -117,7 +120,7 @@ class Purchase
         }
         
         
-        $conn = Db::conn();
+        $conn = Dbal::conn();
         
         $conn->beginTransaction();
         try {
@@ -125,7 +128,7 @@ class Purchase
             
             foreach ($purchases as $pur) {
             $a = $conn->insert('t_purchase_pur', $pur);
-            Product::decStockById($pur['obj_id'], 1);
+            Product::decStockById($pur['obj_id'], $pur['pur_qte']);
             }
             $conn->commit();
         }
@@ -143,8 +146,8 @@ class Purchase
      * $sort_by permet de choisir si l'on veut trier par totalPrice ou par nbBuy
      */
     public static function getRank($fun_id, $obj_id, $start, $end, $top, $sort_by) {
-        $qb = Db::createQueryBuilder();
-        $qb->select('sum(pur.pur_price) as totalPrice', 'count(*) as nbBuy', 'usr.usr_firstname', 'usr.usr_lastname', 'usr.usr_nickname')
+        $qb = Dbal::createQueryBuilder();
+        $qb->select('sum(pur.pur_price) as totalPrice', 'sum(pur_qte) as nbBuy', 'usr.usr_firstname', 'usr.usr_lastname', 'usr.usr_nickname')
            ->from('t_purchase_pur', 'pur')
            ->from('ts_user_usr', 'usr')
            ->where('usr.usr_id = pur.usr_id_buyer')
@@ -187,8 +190,8 @@ class Purchase
 
     public static function getPurchasesForUser($usr_id, $time_limit=null)
     {
-        $qb = Db::createQueryBuilder();
-        $qb->select('pur_id', 'obj_id', 'pur_price')
+        $qb = Dbal::createQueryBuilder();
+        $qb->select('pur_id', 'obj_id', 'pur_price', 'pur_qte', 'pur_date')
            ->from('t_purchase_pur', 'pur')
            ->Where('usr_id_buyer = :usr_id')
            ->andWhere('pur_removed = 0')

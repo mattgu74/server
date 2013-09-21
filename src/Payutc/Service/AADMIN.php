@@ -25,7 +25,7 @@ use \Cas;
 use \Payutc\Bom\User;
 use \Image;
 use \ComplexData;
-use \Db_buckutt;
+use \Payutc\Db\DbBuckutt;
 use \PlageHoraire;
 
 /**
@@ -53,7 +53,7 @@ class AADMIN {
 	 * Constructeur.
 	 */
 	public function __construct() {
-		$this->db = Db_buckutt::getInstance();
+		$this->db = DbBuckutt::getInstance();
 	}
 
 	protected function getRemoteIp() {
@@ -989,7 +989,6 @@ WHERE poi.poi_id = jur.poi_id AND fun_id = '%u' AND poi_removed = '0' AND jur.ri
 	*/
   public function uploadImage($image){
     $oldgd = imagecreatefromstring(base64_decode($image));
-    error_log($image);
     
     ob_start();
     imagepng($oldgd);

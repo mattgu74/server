@@ -7,8 +7,8 @@
  */
 
 namespace Payutc\Bom;
-use \Db_buckutt;
-use \Payutc\Db;
+use \Payutc\Db\Dbal;
+use \Payutc\Db\DbBuckutt;
 
 class Product {
 
@@ -42,7 +42,7 @@ class Product {
         $fun_ids = $params['fun_ids'];
         $itm_ids = $params['itm_ids'];
         
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb->select('itm.obj_id', 'itm.obj_name', 'oli.obj_id_parent', 
                     'itm.fun_id', 'itm.obj_stock', 'itm.obj_alcool', 
                     'pri.pri_credit', 'itm.img_id')
@@ -77,7 +77,7 @@ class Product {
 
 
     public static function getOne($obj_id, $fun_id=null, $removed=0) {
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb->select('obj.obj_id', 'obj.obj_name', 'oli.obj_id_parent', 'obj.fun_id', 
                     'obj.obj_stock', 'obj.obj_alcool', 'pri.pri_credit', 'obj.img_id')
            ->from('t_object_obj', 'obj')
@@ -91,7 +91,6 @@ class Product {
                 'obj_type' => "product",
                 'obj_id' => $obj_id,
                ));
-
         if($fun_id !== null) {
            $qb->andWhere('obj.fun_id = :fun_id')
                 ->setParameter('fun_id', $fun_id);
@@ -118,7 +117,7 @@ class Product {
     * @return array $categorie
     */
     public static function add($nom, $parent, $prix, $stock, $alcool, $image, $fun_id) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         // 1. Verification que le parent existe (et qu'il est bien dans la fundation indiqué (vu qu'on a vérifié les droits grâce à ça)
         $res = $db->query("SELECT fun_id FROM t_object_obj LEFT JOIN tj_object_link_oli ON obj_id = obj_id_child WHERE obj_removed = '0' AND obj_type = 'category' AND obj_id = '%u' AND fun_id = '%u' LIMIT 0,1;", array($parent, $fun_id));
         if ($db->affectedRows() >= 1) {
@@ -167,7 +166,7 @@ class Product {
     * @return array $categorie
     */
     public static function edit($id, $nom, $parent, $prix, $stock, $alcool, $image, $fun_id) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         // 1. GET THE ARTICLE
         $res = $db->query("SELECT o.obj_id, o.obj_name, obj_id_parent, o.fun_id, p.pri_credit, o.img_id, oli_id
         FROM t_object_obj o
@@ -245,9 +244,12 @@ class Product {
     * @return array $result
     */
     public static function delete($id, $fun_id) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         // 1. GET THE ARTICLE
-        $res = $db->query("SELECT o.obj_id, o.obj_name, obj_id_parent, o.fun_id, p.pri_credit
+        $res = $db->query("
+        SELECT 
+            o.obj_id, o.obj_name, obj_id_parent, o.fun_id, o.img_id,
+            p.pri_credit
         FROM t_object_obj o
             LEFT JOIN tj_object_link_oli ON o.obj_id = obj_id_child
             LEFT JOIN t_price_pri p ON p.obj_id = o.obj_id  
@@ -258,16 +260,37 @@ class Product {
             o.fun_id = '%u';", array($id, $fun_id));
         if ($db->affectedRows() >= 1) {
             $don = $db->fetchArray($res);
-            $fundation=$don['fun_id'];
         } else {
             return array("error"=>400, "error_msg"=>"L'article à supprimer n'existe pas ! (Ou vous n' avez pas les droits pour le supprimer).");
         }
+        
+        // start transaction
+        $conn = Dbal::conn();
+        $conn->beginTransaction();
+        
+        try {
+            // 2. remove article
+            $db->query("UPDATE t_object_obj SET  `obj_removed` = '1' WHERE  `obj_id` = '%u';",array($id));
 
-        // 2. REMOVE THE ARTICLE
-        $db->query("UPDATE t_object_obj SET  `obj_removed` = '1' WHERE  `obj_id` = '%u';",array($id));
-
-        // 3. DELETE PRICE
-        // TODO !!
+            // 3. remove prices
+            $qb = Dbal::createQueryBuilder();
+            $qb->update('t_price_pri', 'pri')
+                ->where('obj_id = :id')
+                ->set('pri_removed', 1)
+                ->setParameter('id', $id);
+            $qb->execute();
+            
+            // 4. delete image
+            $conn->delete('ts_image_img', array('img_id' => $don['img_id']));
+            
+            // commit
+            $conn->commit();
+        }
+        catch (Exception $e) {
+            $conn->rollback();
+            return array("error"=>400, "error_msg"=>"Erreur lors de la suppression de l'objet $id.");
+        }
+        
 
         return array("success"=>"ok");
     }
@@ -275,7 +298,7 @@ class Product {
 
     protected static function _baseUpdateQueryById($itm_id)
     {
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb->update('t_object_obj', 'itm')
             ->where('obj_id = :itm_id')
             ->setParameter('itm_id', $itm_id);

@@ -35,6 +35,8 @@ use \Payutc\Log;
 * @package buckutt
 */
 
+use \Payutc\Db\DbBuckutt;
+
 class ServiceBase {
     protected $db;
     protected $service_name;  // Nom du service
@@ -46,7 +48,7 @@ class ServiceBase {
         // DEPRECATED
         // Comme on vise à virer les requetes SQL dans les services le $this->db
         // devrait bientôt disparaitre.
-        $this->db = Db_buckutt::getInstance();
+        $this->db = DbBuckutt::getInstance();
 
         $classdesc = explode("\\", get_class($this));
         $this->service_name = end($classdesc);
@@ -175,7 +177,6 @@ class ServiceBase {
                                     $fun_check,
                                     $fun_id);
         }
-        return true;
     }
     
     /*
@@ -362,6 +363,15 @@ class ServiceBase {
 		}
 	}
     
+    /**
+     * Renvoie l'id d'un utilisateur à partir de son login UTC
+     */
+    public function getUserId($login) {
+        $this->checkRight();
+        $user = new User($login);
+        return $user->getId();
+    }
+
     protected function &getSession() {
         if (!isset($_SESSION[get_class($this)])) {
             $_SESSION[get_class($this)] = array();

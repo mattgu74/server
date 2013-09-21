@@ -7,13 +7,15 @@
  * Table: tj_usr_fun_ufu
  */
 
-use \Payutc\Db;
+use \Payutc\Db\Dbal;
+use \Payutc\Db\DbBuckutt;
+use \Payutc\Bom\User;
 
 class UserRight {
     protected $db;
 
     public function __construct() {
-        $this->db = Db_buckutt::getInstance();        
+        $this->db = DbBuckutt::getInstance();        
     }
     
     /**
@@ -21,7 +23,7 @@ class UserRight {
      * Lorsque les droits n'existe pas throw an exception
      */
 	public static function check($user_id, $service_name = false, $check_fundation = false, $fundation_id = NULL) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         $req = "SELECT ufu.ufu_id FROM tj_usr_fun_ufu ufu 
                                 WHERE ufu.usr_id = '%u' 
                                 AND (ufu.ufu_service = '%s' OR ufu.ufu_service IS NULL) 
@@ -50,7 +52,7 @@ class UserRight {
      * Retourne les fundations ou l'user "user_id" à des droits sur "service_name"
      */
     public static function getFundations($user_id, $service_name) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         $res = $db->query("SELECT fun.fun_id, fun.fun_name
 					FROM t_fundation_fun fun, tj_usr_fun_ufu ufu
 					WHERE (ufu.fun_id = fun.fun_id OR ufu.fun_id is NULL)
@@ -70,7 +72,7 @@ class UserRight {
      * Retourne les droits pour une fundation donné
      */
     public static function getRights($fun_id) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         if($fun_id) {
             $res = $db->query("SELECT ufu.ufu_id, ufu.usr_id, ufu.fun_id, ufu.ufu_service, usr.usr_lastname, usr.usr_firstname, usr.usr_nickname
 					    FROM tj_usr_fun_ufu ufu, ts_user_usr usr
@@ -107,7 +109,24 @@ class UserRight {
      * Donne les droits à un user sur un service et une fundation
      */
     public static function setRight($usr_id, $service, $fun_id) {
-        $conn = Db::conn();
+        if (!User::userExistById($usr_id)) {
+            throw new \Payutc\Exception\SetRightException("User #$usr_id does not exist");
+        }
+        $already_set = true;
+        try {
+            if($fun_id) {
+                static::check($usr_id, $service, true, $fun_id);
+            } else {
+                static::check($usr_id, $service, false);
+            }
+        } catch (Exception $e) {
+            $already_set = false;
+        }
+        if ($already_set) {
+            throw new \Payutc\Exception\RightAlreadyExistsException("L'utilisateur à déjà ce droit.");
+        }
+
+        $conn = Dbal::conn();
         $insert = array(
             "usr_id" => $usr_id,
             "ufu_inserted" => new \DateTime()
@@ -134,7 +153,7 @@ class UserRight {
         $ufu_id = $conn->lastInsertId();
 
         if (!$ufu_id) {
-            throw new Exception("Une erreur s'est produite lors de l'ajout du droit.");
+            throw new \Payutc\Exception\SetRightException("Une erreur s'est produite lors de l'ajout du droit.");
         }
 
         return $ufu_id;
@@ -145,7 +164,7 @@ class UserRight {
 	* 
 	*/
 	public static function removeRight($usr_id, $service, $fun_id) {
-        $db = Db_buckutt::getInstance();
+        $db = DbBuckutt::getInstance();
         $query = "UPDATE tj_usr_fun_ufu SET ufu_removed=NOW() WHERE usr_id='%u' ";
         $var = array($usr_id);
 
@@ -165,7 +184,7 @@ class UserRight {
 
         $db->query($query, $var);
 		if ($db->affectedRows() == 0) {
-			throw new Exception("Une erreur s'est produite lors de la supression du droit.");
+			throw new \Payutc\Exception\SetRightException("Une erreur s'est produite lors de la supression du droit.");
 		}	
 	}
 

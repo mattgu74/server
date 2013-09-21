@@ -30,7 +30,7 @@ use \Payutc\Bom\Blocked;
 use \Payutc\Bom\MsgPerso;
 use \Payutc\Log;
 use \Payutc\Config;
-use \Payutc\Db;
+use \Payutc\Db\Dbal;
 use \Cas;
 use \Ginger\Client\GingerClient;
 
@@ -55,7 +55,7 @@ class User {
     public function __construct($username, $gingerUser = null) {
         Log::debug("User: __construct($username, ".print_r($gingerUser, true).")");
         
-        $query = Db::createQueryBuilder()
+        $query = Dbal::createQueryBuilder()
             ->select('usr_id', 'usr_blocked')
             ->from('ts_user_usr', 'usr')
             ->where('usr.usr_nickname = :usr_nickname')
@@ -150,7 +150,7 @@ class User {
     public function getCredit() {
         Log::debug("User($this->idUser): getCredit()");
         
-        $query = Db::createQueryBuilder()
+        $query = Dbal::createQueryBuilder()
             ->select('usr_credit')
             ->from('ts_user_usr', 'usr')
             ->where('usr.usr_id = :usr_id')
@@ -198,7 +198,7 @@ class User {
     public function setSelfBlock($blocage) {
         Log::debug("User($this->idUser): blockMe($blocage)");
         
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb->update('ts_user_usr', 'usr')
             ->set('usr_blocked', $qb->expr()->literal($blocage))
             ->where('usr_id = :usr_id')
@@ -316,10 +316,10 @@ class User {
     *
     * @return array $return
     */
-    public function getLastPurchase() {
+    public function getLastPurchases() {
         return Purchase::getPurchasesForUser($this->getId(), 60*15);
     }
-
+    
     /**
     * Initialiser ginger, éventuellement avec une URL perso
     *
@@ -353,7 +353,7 @@ class User {
     }
 
     protected static function _baseUpdateQueryById($usr_id) {
-        $qb = Db::createQueryBuilder();
+        $qb = Dbal::createQueryBuilder();
         $qb->update('ts_user_usr', 'usr')
             ->where('usr_id = :usr_id')
             ->setParameter('usr_id', $usr_id);
@@ -436,7 +436,7 @@ class User {
         }
     
         // Add the user to payutc
-        Db::conn()->insert('ts_user_usr', array(
+        Dbal::conn()->insert('ts_user_usr', array(
             'usr_firstname' => $gingerUser->prenom,
             'usr_lastname' => $gingerUser->nom,
             'usr_nickname' => $gingerUser->login,
@@ -447,5 +447,15 @@ class User {
     
         // Return a User object
         return new User($gingerUser->login, $gingerUser);
+    }
+    
+    public static function userExistById($id) {
+        $qb = Dbal::createQueryBuilder();
+        $q = $qb->select('count(*) as count')
+                ->from('ts_user_usr', 'usr')
+                ->where('usr_id = :id')
+                ->setParameter('id', $id);
+        $res = $q->execute()->fetch();
+        return 0 != $res['count'];
     }
 }

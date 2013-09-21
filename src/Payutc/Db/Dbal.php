@@ -1,8 +1,10 @@
-<?php namespace Payutc;
+<?php
+
+namespace Payutc\Db;
 
 use \Payutc\Config;
 
-class Db
+class Dbal
 {
     private static $config = null;
     private static $conn = null;
@@ -25,6 +27,7 @@ class Db
                 'charset'  => 'utf8',
             );
             static::$conn = \Doctrine\DBAL\DriverManager::getConnection($connectionParams, static::$config);
+            static::$conn->getDatabasePlatform()->registerDoctrineTypeMapping('enum', 'string');
         }
         return static::$conn;
     }
